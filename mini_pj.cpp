@@ -584,7 +584,6 @@ int regmem()
 
 void unreg(int resid,bool force = false)
 {
-    cerr<<"unreg:"<<resid<<endl;
     if(resid==-1)return;
     if(!force)
     {
@@ -598,7 +597,6 @@ void unreg(int resid,bool force = false)
         Comp.m[Comp.RtoP[resid].second] = false;
     Comp.PtoR.erase(Comp.RtoP[resid]);
     Comp.RtoP.erase(resid);
-    cerr<<"unreg:"<<resid<<endl;
 }
 int reg(int RPOS)
 {
@@ -612,7 +610,6 @@ int reg(int RPOS)
     Comp.r[RPOS] = true;
     Comp.PtoR[{'r',RPOS}]=uid;
     Comp.RtoP[uid]={'r',RPOS};
-    cerr<<"reg :"<<uid<<" for r"<<RPOS<<endl;
     return uid;
 }
 int load(Element &e,bool rol = false,int sug = -1)
@@ -675,6 +672,7 @@ int load(Element &e,bool rol = false,int sug = -1)
     
     return pos;
 }
+
 void toASM(const CEXP &s)
 {
     cerr<<"TO ASM"<<endl;
@@ -793,11 +791,9 @@ void toASM(const CEXP &s)
                 L = tE.top();
                 
                 L.resid = tLres;
-                cerr<<":D"<<L.resid<<endl;
-                cerr<<": "<<R.resid<<endl;
+
                 if(R.resid!=-1)      //R nerver used.
                     unreg(R.resid); //unreg will protect for xyz
-                cout<<"---"<<endl;
                 E.push(L);
             }
         }
@@ -808,11 +804,12 @@ void toASM(const CEXP &s)
 
 void HOLD()
 {
-    array<int,3> p;
+    array<int,3> p = {-1,-1,-1};
     int errc = 0;
     vector<int> deal,err;
     for(int i=0;i<3;++i)
     {
+        if( VAR[i].resid == -1 )continue;
         p[i] = load(VAR[i]);
         if( VAR[i].resid == -1 )VAR[i].resid = reg(p[i]);
         if( i!=p[i] ){
@@ -820,8 +817,6 @@ void HOLD()
             deal.push_back(i);
         }
     }
-    cout<<"EC"<<errc<<endl;
-    info();
     if( errc == 0 ){}
     if( errc == 1 ){
         printf("MOV r%d r%d\n",deal[0],p[deal[0]]);
@@ -834,7 +829,6 @@ void HOLD()
             err.clear();
             for(int i:deal)
             {
-                //¥iª½±µ´«? 
                 if( find(p.begin(),p.end(),i) == p.end() )
                 {
                     printf("MOV r%d r%d\n",i,p[i]);
@@ -857,10 +851,10 @@ void HOLD()
             }
             swap(VAR[err[0]].resid,VAR[err[1]].resid);
         }else if(err.size()==3){
-            //1 2 3
-            //3 1 2 =>A
-            //2 3 1 =>B
-            if( p[0]==3 )//A
+            //0 1 2
+            //2 0 1 =>A
+            //1 2 0 =>B
+            if( p[0]==1 )//A
             {
                 puts("MOV r3 r0");
                 puts("MOV r0 r1");
@@ -878,6 +872,14 @@ void HOLD()
             for(int i=0;i<3;++i)VAR[i].resid = reg(i);
         }else{
             assert(err.size()==0);
+        }
+    }
+    for(int i=0;i<3;++i)
+    {
+        if( VAR[i].resid == -1 )
+        {
+            printf("MOV r%d 0\n",i);
+            VAR[i].resid=reg(i);
         }
     }
 }
@@ -944,7 +946,7 @@ void SIM(const CEXP &s,int *V = _DV)
     cerr<<"\n====\n";
 }
 
-int main()
+int main(int argc,char *argv[])
 {
     string expr,pre;
     Comp.tmpreg = 7;
@@ -967,8 +969,6 @@ int main()
                 
             SIM(pre);
             
-            //toASM(pre);
-            
             CEXP zp1= zip(pre);
             if( !REG(pre) )
                 throw "expr err";
@@ -977,7 +977,10 @@ int main()
             if( !REG(cp) )
                 throw "expr err";
             
-            toASM(pre);
+            if( argc==2 && argv[1][0]=='r' )
+                toASM(pre);
+            else
+                toASM(cp);
             info();
         }
         HOLD();
