@@ -1,8 +1,13 @@
 #include<bits/stdc++.h>
+#ifdef DBG
+#undef DBG 
+#endif
 using namespace std;
 void throwmsg(string s)
 {
+    #ifdef DBG 
     cerr<<s<<endl;
+    #endif
     throw "";
 }
 enum class COPER
@@ -129,6 +134,7 @@ inline bool isCalcOper(char c)
 
 void echo(const CEXP &s,char end = ' ')
 {
+    #ifdef DBG
     for(auto a:s)
     {
         if( a.type == CTYPE::OPER )
@@ -137,6 +143,7 @@ void echo(const CEXP &s,char end = ' ')
             cerr<<a.row<<end;
     }
     cerr<<endl;
+    #endif
 }
 
 //Shunting-yard algorithm
@@ -542,6 +549,7 @@ Element VAR[3]={
 };
 void info()
 {
+    #ifdef DBG
     for(int i=0;i<3;++i)
     {
         cerr<<(char)('x'+i)<<" ";
@@ -554,6 +562,7 @@ void info()
         }
         cerr<<endl;
     }
+    #endif
 }
 
 string POSSTR(pair<char,int> p)
@@ -566,11 +575,24 @@ int getIndex(const Element &e)
     return e.row[0]-'x';
 }
 
+
+bool hotReg[8]={false};
 int UCOINTER[8];
 int useless()
 {
-    return min_element(UCOINTER,UCOINTER+8)-UCOINTER;
+    int mid = -1;
+    for(int i=0;i<8;++i)
+    {
+        if( hotReg[i] ){
+            continue;
+        }
+        if( mid==-1 || UCOINTER[i]<UCOINTER[mid] )
+            mid = i;
+    }
+    if( mid == -1 )throw "HOT REG FULL!";
+    return mid;
 }
+
 int regmem()
 {
     for(int i=0;i<256/4;i++)
@@ -598,6 +620,7 @@ void unreg(int resid,bool force = false)
     Comp.PtoR.erase(Comp.RtoP[resid]);
     Comp.RtoP.erase(resid);
 }
+
 int reg(int RPOS)
 {
     static int uid = 0;
@@ -606,12 +629,13 @@ int reg(int RPOS)
         cerr<<RPOS<<" Locked: resid"<<Comp.PtoR[{'r',RPOS}]<<endl; 
         throw "Locked!";
     }
-    UCOINTER[RPOS]++;
     Comp.r[RPOS] = true;
     Comp.PtoR[{'r',RPOS}]=uid;
     Comp.RtoP[uid]={'r',RPOS};
+    hotReg[uid] = true;
     return uid;
 }
+
 int load(Element &e,bool rol = false,int sug = -1)
 {
     int flagIsVar = -1;
@@ -623,6 +647,7 @@ int load(Element &e,bool rol = false,int sug = -1)
     }
     if( e.resid != -1 && Comp.RtoP[e.resid].first == 'r' )
     {
+        hotReg[Comp.RtoP[e.resid].second] = true;
         return Comp.RtoP[e.resid].second;
     }
     //找一個放的位置 
@@ -642,10 +667,12 @@ int load(Element &e,bool rol = false,int sug = -1)
         int mem = regmem();
         
         //更新紀錄 
+        //???
         int rm = Comp.PtoR[{'r',uls}];
         Comp.RtoP[rm] = {'m',mem};
         Comp.PtoR[{'m',mem}] = rm;
         Comp.PtoR.erase({'r',uls});
+        Comp.r[uls] = false;
         printf("MOV [%d] r%d\n",mem,uls);
         pos = uls;
     }
@@ -664,10 +691,14 @@ int load(Element &e,bool rol = false,int sug = -1)
     }
     else
     {
+        assert(Comp.RtoP[e.resid].first=='m');
         printf("MOV r%d [%d]\n",pos,Comp.RtoP[e.resid].second);
         Comp.m[Comp.RtoP[e.resid].second] = false;
+        Comp.PtoR.erase(Comp.RtoP[e.resid]);
         Comp.RtoP[e.resid] = {'r',pos};
         Comp.PtoR[{'r',pos}] = e.resid;
+        Comp.r[pos]=true;
+        hotReg[pos]=true;
     }
     
     return pos;
@@ -675,7 +706,9 @@ int load(Element &e,bool rol = false,int sug = -1)
 
 void toASM(const CEXP &s)
 {
+    #ifdef DBG
     cerr<<"TO ASM"<<endl;
+    #endif
     Element L,R;
     Estack E;
     int LP,RP;
@@ -690,6 +723,7 @@ void toASM(const CEXP &s)
         }
         else
         {
+            memset(hotReg,false,sizeof(hotReg));
             if( e.opid == COPER::SUB_1 )
             {
                 L = E.top();E.pop();
@@ -707,7 +741,7 @@ void toASM(const CEXP &s)
                 E.push(L);
                 //throw "not imp";
             }
-            else if( e.opid == COPER::ASG)
+            else if( e.opid == COPER::ASG )
             {
                 R = E.top();E.pop();
                 L = E.top();E.pop();
@@ -775,15 +809,18 @@ void toASM(const CEXP &s)
                 }
                 else
                 {
+                    //if(Comp.r[1])cout<<"R1locked";
                     LP = load(L);
+                    //cout<<"L"<<LP<<endl;
                 }
                 
                 if( L.resid==-1 ) //L need to lock it
                     L.resid = reg(LP);
 
                 RP = load(R);
+                //cout<<"B"<<RP<<endl;
                 printf("%s r%d r%d\n",OPER_INFO[e.opid].ASM,LP,RP);
-                
+                UCOINTER[LP]++;UCOINTER[RP]++;
                 Estack tE;
                 int tLres = L.resid;
                 tE.push(L);tE.push(R);
@@ -791,7 +828,7 @@ void toASM(const CEXP &s)
                 L = tE.top();
                 
                 L.resid = tLres;
-
+                assert(L.resid!=-1);
                 if(R.resid!=-1)      //R nerver used.
                     unreg(R.resid); //unreg will protect for xyz
                 E.push(L);
@@ -804,6 +841,7 @@ void toASM(const CEXP &s)
 
 void HOLD()
 {
+    memset(hotReg,false,sizeof(hotReg));
     array<int,3> p = {-1,-1,-1};
     int errc = 0;
     vector<int> deal,err;
@@ -874,14 +912,14 @@ void HOLD()
             assert(err.size()==0);
         }
     }
-    for(int i=0;i<3;++i)
-    {
-        if( VAR[i].resid == -1 )
-        {
-            printf("MOV r%d 0\n",i);
-            VAR[i].resid=reg(i);
-        }
-    }
+//    for(int i=0;i<3;++i)
+//    {
+//        if( VAR[i].resid == -1 )
+//        {
+//            printf("MOV r%d 0\n",i);
+//            VAR[i].resid=reg(i);
+//        }
+//    }
 }
 int _DV[3]={0,0,0,};
 void SIM(const CEXP &s,int *V = _DV)
@@ -933,17 +971,20 @@ void SIM(const CEXP &s,int *V = _DV)
                                     }break;
                     default: throw "error";
                 }
+                //cerr<<":"<<L.second<<endl;
                 st.push(L);
             }
         }
         else throw "error";
     }
+    #ifdef DBG 
     cerr<<"模擬\n";
     for(int i=0;i<3;++i)
     {
         cerr<<(char)('x'+i)<<"="<<V[i]<<" \t";
     }
     cerr<<"\n====\n";
+    #endif
 }
 
 int main(int argc,char *argv[])
@@ -976,7 +1017,7 @@ int main(int argc,char *argv[])
             CEXP cp = compress(zp1);
             if( !REG(cp) )
                 throw "expr err";
-            
+            echo(cp);
             if( argc==2 && argv[1][0]=='r' )
                 toASM(pre);
             else
@@ -986,14 +1027,20 @@ int main(int argc,char *argv[])
         HOLD();
         info();
         cout<<"EXIT 0"<<endl;
-    }catch(const std::exception& e){ 
+    }catch(const std::exception& e){
+        #ifdef DBG
         cerr<<e.what()<<endl;
+        #endif
         cout<<"EXIT 1"<<endl;
     }catch(const char *str){
+        #ifdef DBG
         cerr<<str<<endl;
+        #endif
         cout<<"EXIT 1"<<endl;
     }catch(...){
+        #ifdef DBG
         cerr<<"Compile error"<<endl;
+        #endif
         cout<<"EXIT 1"<<endl;
     }
 }
